@@ -2,7 +2,16 @@ import React, { useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Building2, CalendarCheck, CheckCircle2, MapPin, MessageCircle, Search, Sparkles, Star, Wallet, Send, Phone, Mail, UserCheck } from 'lucide-react';
 import emailjs from '@emailjs/browser';
+import { createClient } from '@supabase/supabase-js';
 import './styles.css';
+
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://lwjbevkozebnlkshfrrd.supabase.co';
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imx3amJldmtvemVibmxrc2hmcnJkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc4NjgyNDAsImV4cCI6MjA5MzQ0NDI0MH0.NEy0OWpYz370TR7xDw8UKr0OKGdkXLwsFYUnYDec1QA';
+const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+const EMAILJS_SERVICE_ID = 'service_ixz8cn4';
+const EMAILJS_TEMPLATE_ID = 'template_6uwo0lc';
+const EMAILJS_PUBLIC_KEY = 'oSivgdHLY_A9E23qT';
 
 const properties = [
   {
@@ -139,36 +148,61 @@ function App() {
     setChatInput('');
   }
 
-  function submitBooking(e) {
+  async function submitBooking(e) {
     e.preventDefault();
     setIsSending(true);
+    setBookingDone(false);
 
-    const templateParams = {
-      to_name: booking.name,
-      to_email: booking.email,
-      phone: booking.phone,
-      property_title: selectedProperty.title,
+    const bookingData = {
+      buyer_name: booking.name.trim(),
+      buyer_email: booking.email.trim(),
+      buyer_phone: booking.phone.trim(),
+      property_name: selectedProperty.title,
       property_location: selectedProperty.location,
       property_price: formatAED(selectedProperty.price),
       visit_date: booking.date,
       visit_time: booking.time,
+      lead_status: leadStatus,
     };
 
-    emailjs.send(
-      'service_5mf7sbc', 
-      'YOUR_TEMPLATE_ID', // IMPORTANT: Replace with your EmailJS template ID
-      templateParams,
-      'YOUR_PUBLIC_KEY' // IMPORTANT: Replace with your EmailJS public key
-    )
-    .then((response) => {
-       console.log('SUCCESS!', response.status, response.text);
-       setIsSending(false);
-       setBookingDone(true);
-    }, (err) => {
-       console.log('FAILED...', err);
-       alert("Failed to send email. Please ensure your EmailJS Template ID and Public Key are set in the code.");
-       setIsSending(false);
-    });
+    try {
+      // 1. Save lead to Supabase database
+      const { error: supabaseError } = await supabase
+        .from('bookings')
+        .insert([bookingData]);
+
+      if (supabaseError) {
+        throw supabaseError;
+      }
+
+      // 2. Map data for EmailJS template and send email
+      const emailParams = {
+        to_name: bookingData.buyer_name,
+        to_email: bookingData.buyer_email,
+        phone: bookingData.buyer_phone,
+        property_title: bookingData.property_name,
+        property_location: bookingData.property_location,
+        property_price: bookingData.property_price,
+        visit_date: bookingData.visit_date,
+        visit_time: bookingData.visit_time,
+        lead_status: bookingData.lead_status,
+      };
+
+      await emailjs.send(
+        EMAILJS_SERVICE_ID,
+        EMAILJS_TEMPLATE_ID,
+        emailParams,
+        EMAILJS_PUBLIC_KEY
+      );
+
+      setBookingDone(true);
+      setBooking({ name: '', email: '', phone: '', date: '', time: '11:00 AM' });
+    } catch (error) {
+      console.error('Booking failed:', error);
+      alert(error?.message || 'Booking failed. Please check Supabase table, EmailJS template variables, and public keys.');
+    } finally {
+      setIsSending(false);
+    }
   }
 
   return (
@@ -250,7 +284,7 @@ function App() {
             <div className="formRow"><input required type="date" value={booking.date} onChange={(e) => setBooking({ ...booking, date: e.target.value })} /><select value={booking.time} onChange={(e) => setBooking({ ...booking, time: e.target.value })}><option>11:00 AM</option><option>2:00 PM</option><option>5:00 PM</option><option>7:00 PM</option></select></div>
             <button className="primaryBtn full" disabled={isSending}>{isSending ? 'Sending Verification...' : 'Confirm Visit'}</button>
           </form>
-          {bookingDone && <div className="successBox"><CheckCircle2 /> Visit booked for {booking.name} at {booking.time}. A verification email has been sent to the buyer with all key details of the deal.</div>}
+          {bookingDone && <div className="successBox"><CheckCircle2 /> Visit booked successfully. The lead has been saved in Supabase and the EmailJS notification has been sent.</div>}
         </div>
 
         <div className="chatPanel" id="chat">
