@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Building2, CalendarCheck, CheckCircle2, MapPin, MessageCircle, Search, Sparkles, Star, Wallet, Send, Phone, Mail, UserCheck } from 'lucide-react';
+import emailjs from '@emailjs/browser';
 import './styles.css';
 
 const properties = [
@@ -103,6 +104,7 @@ function App() {
   const [selectedProperty, setSelectedProperty] = useState(properties[0]);
   const [booking, setBooking] = useState({ name: '', email: '', phone: '', date: '', time: '11:00 AM' });
   const [bookingDone, setBookingDone] = useState(false);
+  const [isSending, setIsSending] = useState(false);
   const [chatInput, setChatInput] = useState('');
   const [messages, setMessages] = useState([
     { role: 'agent', text: 'Marhaba! I am your property assistant. Tell me your budget, preferred UAE location, and property type. I will filter serious leads and suggest better options.' }
@@ -139,7 +141,34 @@ function App() {
 
   function submitBooking(e) {
     e.preventDefault();
-    setBookingDone(true);
+    setIsSending(true);
+
+    const templateParams = {
+      to_name: booking.name,
+      to_email: booking.email,
+      phone: booking.phone,
+      property_title: selectedProperty.title,
+      property_location: selectedProperty.location,
+      property_price: formatAED(selectedProperty.price),
+      visit_date: booking.date,
+      visit_time: booking.time,
+    };
+
+    emailjs.send(
+      'service_5mf7sbc', 
+      'YOUR_TEMPLATE_ID', // IMPORTANT: Replace with your EmailJS template ID
+      templateParams,
+      'YOUR_PUBLIC_KEY' // IMPORTANT: Replace with your EmailJS public key
+    )
+    .then((response) => {
+       console.log('SUCCESS!', response.status, response.text);
+       setIsSending(false);
+       setBookingDone(true);
+    }, (err) => {
+       console.log('FAILED...', err);
+       alert("Failed to send email. Please ensure your EmailJS Template ID and Public Key are set in the code.");
+       setIsSending(false);
+    });
   }
 
   return (
@@ -192,7 +221,10 @@ function App() {
         <div className="sectionTitle"><span><CheckCircle2 size={18} /> Recommendation System</span><h2>Smart Property Recommendations</h2></div>
         <div className="propertyGrid">
           {recommendationList.map((property) => (
-            <article className="propertyCard" key={property.id} onClick={() => setSelectedProperty(property)}>
+            <article className="propertyCard" key={property.id} onClick={() => {
+              setSelectedProperty(property);
+              document.getElementById('bookingPanel')?.scrollIntoView({ behavior: 'smooth' });
+            }}>
               <img src={property.image} alt={property.title} />
               <div className="cardBody">
                 <div className="tag">{property.tag}</div>
@@ -208,7 +240,7 @@ function App() {
       </section>
 
       <section className="bookingChat">
-        <div className="bookingPanel">
+        <div className="bookingPanel" id="bookingPanel">
           <div className="sectionTitle"><span><CalendarCheck size={18} /> Booking System</span><h2>Schedule Property Visit</h2></div>
           <div className="selectedBox"><b>{selectedProperty.title}</b><span>{selectedProperty.location}</span></div>
           <form onSubmit={submitBooking}>
@@ -216,9 +248,9 @@ function App() {
             <input required placeholder="Email" type="email" value={booking.email} onChange={(e) => setBooking({ ...booking, email: e.target.value })} />
             <input required placeholder="Phone / WhatsApp" value={booking.phone} onChange={(e) => setBooking({ ...booking, phone: e.target.value })} />
             <div className="formRow"><input required type="date" value={booking.date} onChange={(e) => setBooking({ ...booking, date: e.target.value })} /><select value={booking.time} onChange={(e) => setBooking({ ...booking, time: e.target.value })}><option>11:00 AM</option><option>2:00 PM</option><option>5:00 PM</option><option>7:00 PM</option></select></div>
-            <button className="primaryBtn full">Confirm Visit</button>
+            <button className="primaryBtn full" disabled={isSending}>{isSending ? 'Sending Verification...' : 'Confirm Visit'}</button>
           </form>
-          {bookingDone && <div className="successBox"><CheckCircle2 /> Visit booked for {booking.name} at {booking.time}. Follow-up reminder created via email/WhatsApp simulation.</div>}
+          {bookingDone && <div className="successBox"><CheckCircle2 /> Visit booked for {booking.name} at {booking.time}. A verification email has been sent to the buyer with all key details of the deal.</div>}
         </div>
 
         <div className="chatPanel" id="chat">
